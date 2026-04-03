@@ -149,8 +149,8 @@ with st.sidebar:
 
 
 # ── Tabs ────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📊 Results", "📋 Step-by-Step", "📐 Trial Mix", "📚 Reference Tables"]
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["📊 Results", "📋 Step-by-Step", "📐 Trial Mix", "💰 Cost Estimator", "📚 Reference Tables"]
 )
 
 if calculate or "result" in st.session_state:
@@ -158,7 +158,7 @@ if calculate or "result" in st.session_state:
         grade=grade,
         exposure=exposure.lower().replace(" ", "_"),
         agg_size=agg_size,
-        fa_zone={"I":1,"II":2,"III":3,"IV":4}[fa_zone.split()[-1]],
+        fa_zone={"Zone I":1,"Zone II":2,"Zone III":3,"Zone IV":4}[fa_zone],
         slump=slump,
         admixture=admixture.lower(),
         sg_cement=sg_cement,
@@ -340,8 +340,167 @@ with tab3:
             st.info(f"Adjusted water: **{new_water} L/m³** → Cement: **{new_cement} kg/m³** (w/c maintained)")
 
 
-# ── Tab 4 : Reference Tables ─────────────────────────────────────────────────
+# ── Tab 4 : Cost Estimator ──────────────────────────────────────────────────
 with tab4:
+    if res is None:
+        st.info("👈 Calculate mix design first, then estimate cost here.")
+    else:
+        st.markdown("### 💰 Cost Estimator")
+        st.markdown("Enter current local market rates to calculate cost per m³ of concrete.")
+
+        st.markdown("---")
+        st.markdown("#### 📦 Market Rates (enter your local prices)")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            rate_cement = st.number_input(
+                "Cement rate (₹ per 50 kg bag)", 300, 800, 420, 10,
+                help="1 bag = 50 kg. Average market rate is ₹380–₹450 per bag."
+            )
+            rate_fa = st.number_input(
+                "Fine aggregate / Sand rate (₹ per tonne)", 500, 5000, 1200, 50,
+                help="River sand or M-sand rate per metric tonne."
+            )
+        with col2:
+            rate_ca = st.number_input(
+                "Coarse aggregate rate (₹ per tonne)", 500, 5000, 1000, 50,
+                help="20mm crushed stone aggregate rate per metric tonne."
+            )
+            rate_labour = st.number_input(
+                "Labour + mixing charges (₹ per m³)", 500, 5000, 1500, 100,
+                help="Includes mixing, placing, compacting, and curing labour."
+            )
+            rate_admix = st.number_input(
+                "Admixture cost (₹ per m³)", 0, 2000, 150, 50,
+                help="Cost of plasticizer or superplasticizer per m³."
+            )
+
+        st.markdown("---")
+
+        # ── Calculations ──
+        cement_bags       = res['cement'] / 50
+        cost_cement       = round(cement_bags * rate_cement, 2)
+        cost_fa           = round((res['fa'] / 1000) * rate_fa, 2)
+        cost_ca           = round((res['ca'] / 1000) * rate_ca, 2)
+        cost_labour       = rate_labour
+        cost_admix        = rate_admix
+        cost_misc         = round((cost_cement + cost_fa + cost_ca) * 0.03, 2)  # 3% misc
+        total_cost        = round(cost_cement + cost_fa + cost_ca + cost_labour + cost_admix + cost_misc, 2)
+
+        # ── Summary cards ──
+        st.markdown("#### 📊 Cost Breakdown per m³")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(f"""<div class="metric-card">
+            <div class="label">Cement</div>
+            <div class="value" style="font-size:1.4rem;">₹{cost_cement:,.0f}</div>
+            <div class="unit">{cement_bags:.1f} bags × ₹{rate_cement}</div>
+        </div>""", unsafe_allow_html=True)
+        c2.markdown(f"""<div class="metric-card">
+            <div class="label">Fine Aggregate</div>
+            <div class="value" style="font-size:1.4rem;">₹{cost_fa:,.0f}</div>
+            <div class="unit">{res['fa']/1000:.3f} T × ₹{rate_fa}</div>
+        </div>""", unsafe_allow_html=True)
+        c3.markdown(f"""<div class="metric-card">
+            <div class="label">Coarse Aggregate</div>
+            <div class="value" style="font-size:1.4rem;">₹{cost_ca:,.0f}</div>
+            <div class="unit">{res['ca']/1000:.3f} T × ₹{rate_ca}</div>
+        </div>""", unsafe_allow_html=True)
+        c4.markdown(f"""<div class="metric-card">
+            <div class="label">Total Cost / m³</div>
+            <div class="value" style="font-size:1.4rem; color:#16a34a;">₹{total_cost:,.0f}</div>
+            <div class="unit">all inclusive</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        col_left, col_right = st.columns(2)
+
+        with col_left:
+            st.markdown("#### 🧾 Detailed Cost Sheet")
+            cost_df = pd.DataFrame({
+                "Item": [
+                    "Cement",
+                    "Fine Aggregate (Sand)",
+                    "Coarse Aggregate",
+                    "Labour & Mixing",
+                    "Admixture",
+                    "Misc. (transport, water, etc.)",
+                    "TOTAL"
+                ],
+                "Quantity": [
+                    f"{cement_bags:.1f} bags",
+                    f"{res['fa']/1000:.3f} tonnes",
+                    f"{res['ca']/1000:.3f} tonnes",
+                    "per m³",
+                    "per m³",
+                    "3% of material",
+                    ""
+                ],
+                "Cost (₹)": [
+                    f"₹{cost_cement:,.0f}",
+                    f"₹{cost_fa:,.0f}",
+                    f"₹{cost_ca:,.0f}",
+                    f"₹{cost_labour:,.0f}",
+                    f"₹{cost_admix:,.0f}",
+                    f"₹{cost_misc:,.0f}",
+                    f"₹{total_cost:,.0f}"
+                ]
+            })
+            st.dataframe(cost_df, use_container_width=True, hide_index=True)
+
+        with col_right:
+            st.markdown("#### 🥧 Cost Distribution")
+            fig_cost = px.pie(
+                names=["Cement", "Fine Agg.", "Coarse Agg.", "Labour", "Admixture", "Misc."],
+                values=[cost_cement, cost_fa, cost_ca, cost_labour, cost_admix, cost_misc],
+                color_discrete_sequence=["#1e3a5f","#f59e0b","#6b7280","#3b82f6","#10b981","#e2e8f0"],
+                hole=0.4
+            )
+            fig_cost.update_traces(textposition='outside', textinfo='percent+label')
+            fig_cost.update_layout(
+                margin=dict(t=20, b=20, l=20, r=20),
+                showlegend=False, height=320
+            )
+            st.plotly_chart(fig_cost, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("#### 🏗️ Project Volume Calculator")
+        st.markdown("Calculate total cost for your actual project volume.")
+
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            proj_vol = st.number_input("Total concrete volume (m³)", 1.0, 10000.0, 10.0, 1.0)
+        with col_p2:
+            wastage  = st.slider("Add wastage (%)", 0, 15, 5)
+        with col_p3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            eff_vol  = round(proj_vol * (1 + wastage/100), 2)
+            proj_total = round(total_cost * eff_vol, 0)
+            st.metric("Effective Volume", f"{eff_vol} m³")
+
+        st.markdown(f"""
+        <div class="result-highlight" style="margin-top:1rem;">
+            <div style="font-size:0.8rem;color:#1d4ed8;font-weight:600;text-transform:uppercase;
+                        letter-spacing:0.05em;">Estimated Project Cost</div>
+            <div class="ratio">₹ {proj_total:,.0f}</div>
+            <div style="color:#475569;font-size:0.9rem;margin-top:0.25rem;">
+                {eff_vol} m³ × ₹{total_cost:,.0f}/m³ &nbsp;|&nbsp;
+                Grade M{grade} concrete &nbsp;|&nbsp;
+                {wastage}% wastage included
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="warning-box">
+            ⚠️ This is an indicative estimate only. Actual costs vary by location, season,
+            and supplier. Always get quotations from local vendors before finalizing.
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ── Tab 5 : Reference Tables ─────────────────────────────────────────────────
+with tab5:
     st.markdown("### 📚 IS 10262 : 2019 — Reference Tables")
 
     st.markdown("#### Table 1 — Standard deviation & target strength")
